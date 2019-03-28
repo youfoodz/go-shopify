@@ -10,7 +10,7 @@ import (
 
 func productTests(t *testing.T, product Product) {
 	// Check that ID is assigned to the returned product
-	expectedInt := 1071559748
+	var expectedInt int64 = 1071559748
 	if product.ID != expectedInt {
 		t.Errorf("Product.ID returned %+v, expected %+v", product.ID, expectedInt)
 	}
@@ -45,7 +45,7 @@ func TestProductListFilterByIds(t *testing.T) {
 		params,
 		httpmock.NewStringResponder(200, `{"products": [{"id":1},{"id":2},{"id":3}]}`))
 
-	listOptions := ListOptions{IDs: []int{1, 2, 3}}
+	listOptions := ListOptions{IDs: []int64{1, 2, 3}}
 
 	products, err := client.Product.List(listOptions)
 	if err != nil {

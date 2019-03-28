@@ -12,7 +12,7 @@ func inventoryItemTests(t *testing.T, item *InventoryItem) {
 		return
 	}
 
-	expectedInt := 808950810
+	expectedInt := int64(808950810)
 	if item.ID != expectedInt {
 		t.Errorf("InventoryItem.ID returned %+v, expected %+v", item.ID, expectedInt)
 	}
@@ -71,7 +71,7 @@ func TestInventoryItemsListWithIDs(t *testing.T) {
 	)
 
 	options := ListOptions{
-		IDs: []int{1, 2},
+		IDs: []int64{1, 2},
 	}
 
 	items, err := client.InventoryItem.List(options)

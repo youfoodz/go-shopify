@@ -350,14 +350,15 @@ func CheckResponseError(r *http.Response) error {
 type ListOptions struct {
 	Page         int       `url:"page,omitempty"`
 	Limit        int       `url:"limit,omitempty"`
-	SinceID      int       `url:"since_id,omitempty"`
+	SinceID      int64     `url:"since_id,omitempty"`
 	CreatedAtMin time.Time `url:"created_at_min,omitempty"`
 	CreatedAtMax time.Time `url:"created_at_max,omitempty"`
 	UpdatedAtMin time.Time `url:"updated_at_min,omitempty"`
 	UpdatedAtMax time.Time `url:"updated_at_max,omitempty"`
 	Order        string    `url:"order,omitempty"`
 	Fields       string    `url:"fields,omitempty"`
-	IDs          []int     `url:"ids,omitempty,comma"`
+	Vendor       string    `url:"vendor,omitempty"`
+	IDs          []int64   `url:"ids,omitempty,comma"`
 }
 
 // General count options that can be used for most collection counts.
