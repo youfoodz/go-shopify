@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const themesBasePath = "admin/themes"
+const themesBasePath = "themes"
 
 // Options for theme list
 type ThemeListOptions struct {
@@ -28,12 +28,12 @@ type ThemeServiceOp struct {
 
 // Theme represents a Shopify theme
 type Theme struct {
-	ID           int        `json:"id"`
-	Name         string     `json:"string"`
+	ID           int64      `json:"id"`
+	Name         string     `json:"name"`
 	Previewable  bool       `json:"previewable"`
 	Processing   bool       `json:"processing"`
 	Role         string     `json:"role"`
-	ThemeStoreID int        `json:"theme_store_id"`
+	ThemeStoreID int64      `json:"theme_store_id"`
 	CreatedAt    *time.Time `json:"created_at"`
 	UpdatedAt    *time.Time `json:"updated_at"`
 }
@@ -45,7 +45,7 @@ type ThemesResource struct {
 
 // List all themes
 func (s *ThemeServiceOp) List(options interface{}) ([]Theme, error) {
-	path := fmt.Sprintf("%s.json", themesBasePath)
+	path := fmt.Sprintf("%s/%s.json", globalApiPathPrefix, themesBasePath)
 	resource := new(ThemesResource)
 	err := s.client.Get(path, resource, options)
 	return resource.Themes, err

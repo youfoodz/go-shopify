@@ -1,6 +1,7 @@
 package goshopify
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -13,16 +14,18 @@ func TestThemeList(t *testing.T) {
 
 	httpmock.RegisterResponder(
 		"GET",
-		"https://fooshop.myshopify.com/admin/themes.json",
+		fmt.Sprintf("https://fooshop.myshopify.com/%s/themes.json", globalApiPathPrefix),
 		httpmock.NewStringResponder(
 			200,
 			`{"themes": [{"id":1},{"id":2}]}`,
 		),
 	)
 
-	httpmock.RegisterResponder(
+	params := map[string]string{"role": "main"}
+	httpmock.RegisterResponderWithQuery(
 		"GET",
-		"https://fooshop.myshopify.com/admin/themes.json?role=main",
+		fmt.Sprintf("https://fooshop.myshopify.com/%s/themes.json", globalApiPathPrefix),
+		params,
 		httpmock.NewStringResponder(
 			200,
 			`{"themes": [{"id":1}]}`,

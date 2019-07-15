@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +20,11 @@ import (
 
 const (
 	UserAgent = "goshopify/1.0.0"
+)
+
+var (
+	// Shopify API version YYYY-MM - defaults to admin which uses the oldest stable version of the api
+	globalApiPathPrefix string = "admin"
 )
 
 // App represents basic app settings such as Api key, secret, scope, and redirect url.
@@ -48,19 +54,33 @@ type Client struct {
 	token string
 
 	// Services used for communicating with the API
-	Product          ProductService
-	CustomCollection CustomCollectionService
-	SmartCollection  SmartCollectionService
-	Customer         CustomerService
-	Order            OrderService
-	Shop             ShopService
-	Webhook          WebhookService
-	Variant          VariantService
-	Image            ImageService
-	Transaction      TransactionService
-	Theme            ThemeService
-	Asset            AssetService
-	ScriptTag        ScriptTagService
+	Product                    ProductService
+	CustomCollection           CustomCollectionService
+	SmartCollection            SmartCollectionService
+	Customer                   CustomerService
+	CustomerAddress            CustomerAddressService
+	Order                      OrderService
+	DraftOrder                 DraftOrderService
+	Shop                       ShopService
+	Webhook                    WebhookService
+	Variant                    VariantService
+	Image                      ImageService
+	Transaction                TransactionService
+	Theme                      ThemeService
+	Asset                      AssetService
+	ScriptTag                  ScriptTagService
+	RecurringApplicationCharge RecurringApplicationChargeService
+	UsageCharge                UsageChargeService
+	Metafield                  MetafieldService
+	Blog                       BlogService
+	ApplicationCharge          ApplicationChargeService
+	Redirect                   RedirectService
+	Page                       PageService
+	StorefrontAccessToken      StorefrontAccessTokenService
+	Collect                    CollectService
+	Location                   LocationService
+	DiscountCode               DiscountCodeService
+	InventoryItem              InventoryItemService
 }
 
 // A general response error that follows a similar layout to Shopify's response
@@ -86,7 +106,7 @@ func (e ResponseError) Error() string {
 	return "Unknown Error"
 }
 
-// ResponseDecodingError occurs when the respone body from Shopify could
+// ResponseDecodingError occurs when the response body from Shopify could
 // not be parsed.
 type ResponseDecodingError struct {
 	Body    []byte
@@ -159,9 +179,33 @@ func (c *Client) NewRequest(method, urlStr string, body, options interface{}) (*
 	return req, nil
 }
 
+// Option is used to configure client with options
+type Option func(c *Client)
+
+// WithVersion optionally sets the api-version if the passed string is valid
+func WithVersion(apiVersion string) Option {
+	return func(c *Client) {
+		var rxPat = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}$`)
+		if len(apiVersion) > 0 && rxPat.MatchString(apiVersion) {
+			globalApiPathPrefix = fmt.Sprintf("admin/api/%s", apiVersion)
+		} else {
+			globalApiPathPrefix = "admin"
+		}
+	}
+}
+
+// NewClient returns a new Shopify API client with an already authenticated shopname and
+// token. The shopName parameter is the shop's myshopify domain,
+// e.g. "theshop.myshopify.com", or simply "theshop"
+// a.NewClient(shopName, token, opts) is equivalent to NewClient(a, shopName, token, opts)
+func (a App) NewClient(shopName, token string, opts ...Option) *Client {
+	return NewClient(a, shopName, token, opts...)
+}
+
 // Returns a new Shopify API client with an already authenticated shopname and
-// token.
-func NewClient(app App, shopName, token string) *Client {
+// token. The shopName parameter is the shop's myshopify domain,
+// e.g. "theshop.myshopify.com", or simply "theshop"
+func NewClient(app App, shopName, token string, opts ...Option) *Client {
 	httpClient := http.DefaultClient
 
 	baseURL, _ := url.Parse(ShopBaseUrl(shopName))
@@ -171,7 +215,9 @@ func NewClient(app App, shopName, token string) *Client {
 	c.CustomCollection = &CustomCollectionServiceOp{client: c}
 	c.SmartCollection = &SmartCollectionServiceOp{client: c}
 	c.Customer = &CustomerServiceOp{client: c}
+	c.CustomerAddress = &CustomerAddressServiceOp{client: c}
 	c.Order = &OrderServiceOp{client: c}
+	c.DraftOrder = &DraftOrderServiceOp{client: c}
 	c.Shop = &ShopServiceOp{client: c}
 	c.Webhook = &WebhookServiceOp{client: c}
 	c.Variant = &VariantServiceOp{client: c}
@@ -180,6 +226,23 @@ func NewClient(app App, shopName, token string) *Client {
 	c.Theme = &ThemeServiceOp{client: c}
 	c.Asset = &AssetServiceOp{client: c}
 	c.ScriptTag = &ScriptTagServiceOp{client: c}
+	c.RecurringApplicationCharge = &RecurringApplicationChargeServiceOp{client: c}
+	c.Metafield = &MetafieldServiceOp{client: c}
+	c.Blog = &BlogServiceOp{client: c}
+	c.ApplicationCharge = &ApplicationChargeServiceOp{client: c}
+	c.Redirect = &RedirectServiceOp{client: c}
+	c.Page = &PageServiceOp{client: c}
+	c.StorefrontAccessToken = &StorefrontAccessTokenServiceOp{client: c}
+	c.UsageCharge = &UsageChargeServiceOp{client: c}
+	c.Collect = &CollectServiceOp{client: c}
+	c.Location = &LocationServiceOp{client: c}
+	c.DiscountCode = &DiscountCodeServiceOp{client: c}
+	c.InventoryItem = &InventoryItemServiceOp{client: c}
+
+	// apply any options
+	for _, opt := range opts {
+		opt(c)
+	}
 
 	return c
 }
@@ -277,18 +340,18 @@ func CheckResponseError(r *http.Response) error {
 	//
 	// Unfortunately, "errors" can also be a single string so we have to deal
 	// with that. Lots of reflection :-(
-	kind := reflect.TypeOf(shopifyError.Errors).Kind()
-	if kind == reflect.String {
+	switch reflect.TypeOf(shopifyError.Errors).Kind() {
+	case reflect.String:
 		// Single string, use as message
 		responseError.Message = shopifyError.Errors.(string)
-	} else if kind == reflect.Slice {
+	case reflect.Slice:
 		// An array, parse each entry as a string and join them on the message
 		// json always serializes JSON arrays into []interface{}
 		for _, elem := range shopifyError.Errors.([]interface{}) {
 			responseError.Errors = append(responseError.Errors, fmt.Sprint(elem))
 		}
 		responseError.Message = strings.Join(responseError.Errors, ", ")
-	} else if kind == reflect.Map {
+	case reflect.Map:
 		// A map, parse each error for each key in the map.
 		// json always serializes into map[string]interface{} for objects
 		for k, v := range shopifyError.Errors.(map[string]interface{}) {
@@ -299,7 +362,7 @@ func CheckResponseError(r *http.Response) error {
 					// If the primary message of the response error is not set, use
 					// any message.
 					if responseError.Message == "" {
-						responseError.Message = fmt.Sprint(elem)
+						responseError.Message = fmt.Sprintf("%v: %v", k, elem)
 					}
 					topicAndElem := fmt.Sprintf("%v: %v", k, elem)
 					responseError.Errors = append(responseError.Errors, topicAndElem)
@@ -315,13 +378,15 @@ func CheckResponseError(r *http.Response) error {
 type ListOptions struct {
 	Page         int       `url:"page,omitempty"`
 	Limit        int       `url:"limit,omitempty"`
-	SinceID      int       `url:"since_id,omitempty"`
+	SinceID      int64     `url:"since_id,omitempty"`
 	CreatedAtMin time.Time `url:"created_at_min,omitempty"`
 	CreatedAtMax time.Time `url:"created_at_max,omitempty"`
 	UpdatedAtMin time.Time `url:"updated_at_min,omitempty"`
 	UpdatedAtMax time.Time `url:"updated_at_max,omitempty"`
 	Order        string    `url:"order,omitempty"`
 	Fields       string    `url:"fields,omitempty"`
+	Vendor       string    `url:"vendor,omitempty"`
+	IDs          []int64   `url:"ids,omitempty,comma"`
 }
 
 // General count options that can be used for most collection counts.

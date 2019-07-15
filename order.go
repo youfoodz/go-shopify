@@ -7,7 +7,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const ordersBasePath = "admin/orders"
+const ordersBasePath = "orders"
+const ordersResourceName = "orders"
 
 // OrderService is an interface for interfacing with the orders endpoints of
 // the Shopify API.
@@ -15,7 +16,15 @@ const ordersBasePath = "admin/orders"
 type OrderService interface {
 	List(interface{}) ([]Order, error)
 	Count(interface{}) (int, error)
-	Get(int, interface{}) (*Order, error)
+	Get(int64, interface{}) (*Order, error)
+	Create(Order) (*Order, error)
+	Update(Order) (*Order, error)
+
+	// MetafieldsService used for Order resource to communicate with Metafields resource
+	MetafieldsService
+
+	// FulfillmentsService used for Order resource to communicate with Fulfillments resource
+	FulfillmentsService
 }
 
 // OrderServiceOp handles communication with the order related methods of the
@@ -24,12 +33,28 @@ type OrderServiceOp struct {
 	client *Client
 }
 
+// A struct for all available order count options
+type OrderCountOptions struct {
+	Page              int       `url:"page,omitempty"`
+	Limit             int       `url:"limit,omitempty"`
+	SinceID           int64     `url:"since_id,omitempty"`
+	CreatedAtMin      time.Time `url:"created_at_min,omitempty"`
+	CreatedAtMax      time.Time `url:"created_at_max,omitempty"`
+	UpdatedAtMin      time.Time `url:"updated_at_min,omitempty"`
+	UpdatedAtMax      time.Time `url:"updated_at_max,omitempty"`
+	Order             string    `url:"order,omitempty"`
+	Fields            string    `url:"fields,omitempty"`
+	Status            string    `url:"status,omitempty"`
+	FinancialStatus   string    `url:"financial_status,omitempty"`
+	FulfillmentStatus string    `url:"fulfillment_status,omitempty"`
+}
+
 // A struct for all available order list options.
 // See: https://help.shopify.com/api/reference/order#index
 type OrderListOptions struct {
 	Page              int       `url:"page,omitempty"`
 	Limit             int       `url:"limit,omitempty"`
-	SinceID           int       `url:"since_id,omitempty"`
+	SinceID           int64     `url:"since_id,omitempty"`
 	Status            string    `url:"status,omitempty"`
 	FinancialStatus   string    `url:"financial_status,omitempty"`
 	FulfillmentStatus string    `url:"fulfillment_status,omitempty"`
@@ -45,121 +70,123 @@ type OrderListOptions struct {
 
 // Order represents a Shopify order
 type Order struct {
-	ID                    int              `json:"id"`
-	Name                  string           `json:"name"`
-	Email                 string           `json:"email"`
-	CreatedAt             *time.Time       `json:"created_at"`
-	UpdatedAt             *time.Time       `json:"updated_at"`
-	CancelledAt           *time.Time       `json:"cancelled_at"`
-	ClosedAt              *time.Time       `json:"closed_at"`
-	ProcessedAt           *time.Time       `json:"processed_at"`
-	Customer              *Customer        `json:"customer"`
-	BillingAddress        *Address         `json:"billing_address"`
-	ShippingAddress       *Address         `json:"shipping_address"`
-	Currency              string           `json:"currency"`
-	TotalPrice            *decimal.Decimal `json:"total_price"`
-	SubtotalPrice         *decimal.Decimal `json:"subtotal_price"`
-	TotalDiscounts        *decimal.Decimal `json:"total_discounts"`
-	TotalLineItemsPrice   *decimal.Decimal `json:"total_line_items_price"`
-	TaxesIncluded         bool             `json:"taxes_included"`
-	TotalTax              *decimal.Decimal `json:"total_tax"`
-	TaxLines              []TaxLine        `json:"tax_lines"`
-	TotalWeight           int              `json:"total_weight"`
-	FinancialStatus       string           `json:"financial_status"`
-	Fulfillments          []Fulfillment    `json:"fulfillments"`
-	FulfillmentStatus     string           `json:"fulfillment_status"`
-	Token                 string           `json:"token"`
-	CartToken             string           `json:"cart_token"`
-	Number                int              `json:"number"`
-	OrderNumber           int              `json:"order_number"`
-	Note                  string           `json:"note"`
-	Test                  bool             `json:"test"`
-	BrowserIp             string           `json:"browser_ip"`
-	BuyerAcceptsMarketing bool             `json:"buyer_accepts_marketing"`
-	CancelReason          string           `json:"cancel_reason"`
-	NoteAttributes        []NoteAttribute  `json:"note_attributes"`
-	DiscountCodes         []DiscountCode   `json:"discount_codes"`
-	LineItems             []LineItem       `json:"line_items"`
-	ShippingLines         []ShippingLines  `json:"shipping_lines"`
-	Transactions          []Transaction    `json:"transactions"`
-	AppID                 int              `json:"app_id"`
-	CustomerLocale        string           `json:"customer_locale"`
-	LandingSite           string           `json:"landing_site"`
-	ReferringSite         string           `json:"referring_site"`
-	SourceName            string           `json:"source_name"`
-	ClientDetails         *ClientDetails   `json:"client_details"`
-	Tags                  string           `json:"tags"`
-	LocationId            int              `json:"location_id"`
-	PaymentGatewayNames   []string         `json:"payment_gateway_names"`
-	ProcessingMethod      string           `json:"processing_method"`
-	Refunds               []Refund         `json:"refunds"`
-	UserId                int              `json:"user_id"`
-	OrderStatusUrl        string           `json:"order_status_url"`
-	Gateway               string           `json:"gateway"`
-	Confirmed             bool             `json:"confirmed"`
-	TotalPriceUSD         *decimal.Decimal `json:"total_price_usd"`
-	CheckoutToken         string           `json:"checkout_token"`
-	Reference             string           `json:"reference"`
-	SourceIdentifier      string           `json:"source_identifier"`
-	SourceURL             string           `json:"source_url"`
-	DeviceID              int              `json:"device_id"`
-	Phone                 string           `json:"phone"`
-	LandingSiteRef        string           `json:"landing_site_ref"`
-	CheckoutID            int              `json:"checkout_id"`
-	ContactEmail          string           `json:"contact_email"`
+	ID                    int64            `json:"id,omitempty"`
+	Name                  string           `json:"name,omitempty"`
+	Email                 string           `json:"email,omitempty"`
+	CreatedAt             *time.Time       `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time       `json:"updated_at,omitempty"`
+	CancelledAt           *time.Time       `json:"cancelled_at,omitempty"`
+	ClosedAt              *time.Time       `json:"closed_at,omitempty"`
+	ProcessedAt           *time.Time       `json:"processed_at,omitempty"`
+	Customer              *Customer        `json:"customer,omitempty"`
+	BillingAddress        *Address         `json:"billing_address,omitempty"`
+	ShippingAddress       *Address         `json:"shipping_address,omitempty"`
+	Currency              string           `json:"currency,omitempty"`
+	TotalPrice            *decimal.Decimal `json:"total_price,omitempty"`
+	SubtotalPrice         *decimal.Decimal `json:"subtotal_price,omitempty"`
+	TotalDiscounts        *decimal.Decimal `json:"total_discounts,omitempty"`
+	TotalLineItemsPrice   *decimal.Decimal `json:"total_line_items_price,omitempty"`
+	TaxesIncluded         bool             `json:"taxes_included,omitempty"`
+	TotalTax              *decimal.Decimal `json:"total_tax,omitempty"`
+	TaxLines              []TaxLine        `json:"tax_lines,omitempty"`
+	TotalWeight           int              `json:"total_weight,omitempty"`
+	FinancialStatus       string           `json:"financial_status,omitempty"`
+	Fulfillments          []Fulfillment    `json:"fulfillments,omitempty"`
+	FulfillmentStatus     string           `json:"fulfillment_status,omitempty"`
+	Token                 string           `json:"token,omitempty"`
+	CartToken             string           `json:"cart_token,omitempty"`
+	Number                int              `json:"number,omitempty"`
+	OrderNumber           int              `json:"order_number,omitempty"`
+	Note                  string           `json:"note,omitempty"`
+	Test                  bool             `json:"test,omitempty"`
+	BrowserIp             string           `json:"browser_ip,omitempty"`
+	BuyerAcceptsMarketing bool             `json:"buyer_accepts_marketing,omitempty"`
+	CancelReason          string           `json:"cancel_reason,omitempty"`
+	NoteAttributes        []NoteAttribute  `json:"note_attributes,omitempty"`
+	DiscountCodes         []DiscountCode   `json:"discount_codes,omitempty"`
+	LineItems             []LineItem       `json:"line_items,omitempty"`
+	ShippingLines         []ShippingLines  `json:"shipping_lines,omitempty"`
+	Transactions          []Transaction    `json:"transactions,omitempty"`
+	AppID                 int              `json:"app_id,omitempty"`
+	CustomerLocale        string           `json:"customer_locale,omitempty"`
+	LandingSite           string           `json:"landing_site,omitempty"`
+	ReferringSite         string           `json:"referring_site,omitempty"`
+	SourceName            string           `json:"source_name,omitempty"`
+	ClientDetails         *ClientDetails   `json:"client_details,omitempty"`
+	Tags                  string           `json:"tags,omitempty"`
+	LocationId            int64            `json:"location_id,omitempty"`
+	PaymentGatewayNames   []string         `json:"payment_gateway_names,omitempty"`
+	ProcessingMethod      string           `json:"processing_method,omitempty"`
+	Refunds               []Refund         `json:"refunds,omitempty"`
+	UserId                int64            `json:"user_id,omitempty"`
+	OrderStatusUrl        string           `json:"order_status_url,omitempty"`
+	Gateway               string           `json:"gateway,omitempty"`
+	Confirmed             bool             `json:"confirmed,omitempty"`
+	TotalPriceUSD         *decimal.Decimal `json:"total_price_usd,omitempty"`
+	CheckoutToken         string           `json:"checkout_token,omitempty"`
+	Reference             string           `json:"reference,omitempty"`
+	SourceIdentifier      string           `json:"source_identifier,omitempty"`
+	SourceURL             string           `json:"source_url,omitempty"`
+	DeviceID              int64            `json:"device_id,omitempty"`
+	Phone                 string           `json:"phone,omitempty"`
+	LandingSiteRef        string           `json:"landing_site_ref,omitempty"`
+	CheckoutID            int64            `json:"checkout_id,omitempty"`
+	ContactEmail          string           `json:"contact_email,omitempty"`
+	Metafields            []Metafield      `json:"metafields,omitempty"`
 }
 
 type Address struct {
-	ID           int     `json:"id"`
-	Address1     string  `json:"address1"`
-	Address2     string  `json:"address2"`
-	City         string  `json:"city"`
-	Company      string  `json:"company"`
-	Country      string  `json:"country"`
-	CountryCode  string  `json:"country_code"`
-	FirstName    string  `json:"first_name"`
-	LastName     string  `json:"last_name"`
-	Latitude     float64 `json:"latitude"`
-	Longitude    float64 `json:"longitude"`
-	Name         string  `json:"name"`
-	Phone        string  `json:"phone"`
-	Province     string  `json:"province"`
-	ProvinceCode string  `json:"province_code"`
-	Zip          string  `json:"zip"`
+	ID           int64   `json:"id,omitempty"`
+	Address1     string  `json:"address1,omitempty"`
+	Address2     string  `json:"address2,omitempty"`
+	City         string  `json:"city,omitempty"`
+	Company      string  `json:"company,omitempty"`
+	Country      string  `json:"country,omitempty"`
+	CountryCode  string  `json:"country_code,omitempty"`
+	FirstName    string  `json:"first_name,omitempty"`
+	LastName     string  `json:"last_name,omitempty"`
+	Latitude     float64 `json:"latitude,omitempty"`
+	Longitude    float64 `json:"longitude,omitempty"`
+	Name         string  `json:"name,omitempty"`
+	Phone        string  `json:"phone,omitempty"`
+	Province     string  `json:"province,omitempty"`
+	ProvinceCode string  `json:"province_code,omitempty"`
+	Zip          string  `json:"zip,omitempty"`
 }
 
 type DiscountCode struct {
-	Amount *decimal.Decimal `json:"amount"`
-	Code   string           `json:"code"`
-	Type   string           `json:"type"`
+	Amount *decimal.Decimal `json:"amount,omitempty"`
+	Code   string           `json:"code,omitempty"`
+	Type   string           `json:"type,omitempty"`
 }
 
 type LineItem struct {
-	ID                         int              `json:"id"`
-	ProductID                  int              `json:"product_id"`
-	VariantID                  int              `json:"variant_id"`
-	Quantity                   int              `json:"quantity"`
-	Price                      *decimal.Decimal `json:"price"`
-	TotalDiscount              *decimal.Decimal `json:"total_discount"`
-	Title                      string           `json:"title"`
-	VariantTitle               string           `json:"variant_title"`
-	Name                       string           `json:"name"`
-	SKU                        string           `json:"sku"`
-	Vendor                     string           `json:"vendor"`
-	GiftCard                   bool             `json:"gift_card"`
-	Taxable                    bool             `json:"taxable"`
-	FulfillmentService         string           `json:"fulfillment_service"`
-	RequiresShipping           bool             `json:"requires_shipping"`
-	VariantInventoryManagement string           `json:"variant_inventory_management"`
-	PreTaxPrice                *decimal.Decimal `json:"pre_tax_price"`
-	Properties                 []NoteAttribute  `json:"properties"`
-	ProductExists              bool             `json:"product_exists"`
-	FulfillableQuantity        int              `json:"fulfillable_quantity"`
-	Grams                      int              `json:"grams"`
-	FulfillmentStatus          string           `json:"fulfillment_status"`
-	TaxLines                   []TaxLine        `json:"tax_lines"`
-	OriginLocation             *Address         `json:"origin_location"`
-	DestinationLocation        *Address         `json:"destination_location"`
+	ID                         int64            `json:"id,omitempty"`
+	ProductID                  int64            `json:"product_id,omitempty"`
+	VariantID                  int64            `json:"variant_id,omitempty"`
+	Quantity                   int              `json:"quantity,omitempty"`
+	Price                      *decimal.Decimal `json:"price,omitempty"`
+	TotalDiscount              *decimal.Decimal `json:"total_discount,omitempty"`
+	Title                      string           `json:"title,omitempty"`
+	VariantTitle               string           `json:"variant_title,omitempty"`
+	Name                       string           `json:"name,omitempty"`
+	SKU                        string           `json:"sku,omitempty"`
+	Vendor                     string           `json:"vendor,omitempty"`
+	GiftCard                   bool             `json:"gift_card,omitempty"`
+	Taxable                    bool             `json:"taxable,omitempty"`
+	FulfillmentService         string           `json:"fulfillment_service,omitempty"`
+	RequiresShipping           bool             `json:"requires_shipping,omitempty"`
+	VariantInventoryManagement string           `json:"variant_inventory_management,omitempty"`
+	PreTaxPrice                *decimal.Decimal `json:"pre_tax_price,omitempty"`
+	Properties                 []NoteAttribute  `json:"properties,omitempty"`
+	ProductExists              bool             `json:"product_exists,omitempty"`
+	FulfillableQuantity        int              `json:"fulfillable_quantity,omitempty"`
+	Grams                      int              `json:"grams,omitempty"`
+	FulfillmentStatus          string           `json:"fulfillment_status,omitempty"`
+	TaxLines                   []TaxLine        `json:"tax_lines,omitempty"`
+	OriginLocation             *Address         `json:"origin_location,omitempty"`
+	DestinationLocation        *Address         `json:"destination_location,omitempty"`
+	AppliedDiscount            *AppliedDiscount `json:"applied_discount,omitempty"`
 }
 
 type LineItemProperty struct {
@@ -167,8 +194,8 @@ type LineItemProperty struct {
 }
 
 type NoteAttribute struct {
-	Name  string      `json:"Name"`
-	Value interface{} `json:"Value"`
+	Name  string      `json:"name,omitempty"`
+	Value interface{} `json:"value,omitempty"`
 }
 
 // Represents the result from the orders/X.json endpoint
@@ -182,105 +209,85 @@ type OrdersResource struct {
 }
 
 type PaymentDetails struct {
-	AVSResultCode     string `json:"avs_result_code"`
-	CreditCardBin     string `json:"credit_card_bin"`
-	CVVResultCode     string `json:"cvv_result_code"`
-	CreditCardNumber  string `json:"credit_card_number"`
-	CreditCardCompany string `json:"credit_card_company"`
+	AVSResultCode     string `json:"avs_result_code,omitempty"`
+	CreditCardBin     string `json:"credit_card_bin,omitempty"`
+	CVVResultCode     string `json:"cvv_result_code,omitempty"`
+	CreditCardNumber  string `json:"credit_card_number,omitempty"`
+	CreditCardCompany string `json:"credit_card_company,omitempty"`
 }
 
 type ShippingLines struct {
-	ID                            int              `json:"id"`
-	Title                         string           `json:"title"`
-	Price                         *decimal.Decimal `json:"price"`
-	Code                          string           `json:"code"`
-	Source                        string           `json:"source"`
-	Phone                         string           `json:"phone"`
-	RequestedFulfillmentServiceID string           `json:"requested_fulfillment_service_id"`
-	DeliveryCategory              string           `json:"delivery_category"`
-	CarrierIdentifier             string           `json:"carrier_identifier"`
-	TaxLines                      []TaxLine        `json:"tax_lines"`
+	ID                            int64            `json:"id,omitempty"`
+	Title                         string           `json:"title,omitempty"`
+	Price                         *decimal.Decimal `json:"price,omitempty"`
+	Code                          string           `json:"code,omitempty"`
+	Source                        string           `json:"source,omitempty"`
+	Phone                         string           `json:"phone,omitempty"`
+	RequestedFulfillmentServiceID string           `json:"requested_fulfillment_service_id,omitempty"`
+	DeliveryCategory              string           `json:"delivery_category,omitempty"`
+	CarrierIdentifier             string           `json:"carrier_identifier,omitempty"`
+	TaxLines                      []TaxLine        `json:"tax_lines,omitempty"`
 }
 
 type TaxLine struct {
-	Title string           `json:"title"`
-	Price *decimal.Decimal `json:"price"`
-	Rate  *decimal.Decimal `json:"rate"`
+	Title string           `json:"title,omitempty"`
+	Price *decimal.Decimal `json:"price,omitempty"`
+	Rate  *decimal.Decimal `json:"rate,omitempty"`
 }
 
 type Transaction struct {
-	ID             int              `json:"id"`
-	OrderID        int              `json:"order_id"`
-	Amount         *decimal.Decimal `json:"amount"`
-	Kind           string           `json:"kind"`
-	Gateway        string           `json:"gateway"`
-	Status         string           `json:"status"`
-	Message        string           `json:"message"`
-	CreatedAt      *time.Time       `json:"created_at"`
-	Test           bool             `json:"test"`
-	Authorization  string           `json:"authorization"`
-	Currency       string           `json:"currency"`
-	LocationID     *int             `json:"location_id"`
-	UserID         *int             `json:"user_id"`
-	ParentID       *int             `json:"parent_id"`
-	DeviceID       *int             `json:"device_id"`
-	ErrorCode      string           `json:"error_code"`
-	SourceName     string           `json:"source_name"`
-	PaymentDetails *PaymentDetails  `json:"payment_details"`
-}
-
-type Fulfillment struct {
-	ID              int        `json:"id"`
-	OrderID         int        `json:"order_id"`
-	Status          string     `json:"status"`
-	CreatedAt       *time.Time `json:"created_at"`
-	Service         string     `json:"service"`
-	UpdatedAt       *time.Time `json:"updated_at"`
-	TrackingCompany string     `json:"tracking_company"`
-	ShipmentStatus  string     `json:"shipment_status"`
-	TrackingNumber  string     `json:"tracking_number"`
-	TrackingNumbers []string   `json:"tracking_numbers"`
-	TrackingUrl     string     `json:"tracking_url"`
-	TrackingUrls    []string   `json:"tracking_urls"`
-	Receipt         Receipt    `json:"receipt"`
-	LineItems       []LineItem `json:"line_items"`
-}
-
-type Receipt struct {
-	TestCase      bool   `json:"testcase"`
-	Authorization string `json:"authorization"`
+	ID             int64            `json:"id,omitempty"`
+	OrderID        int64            `json:"order_id,omitempty"`
+	Amount         *decimal.Decimal `json:"amount,omitempty"`
+	Kind           string           `json:"kind,omitempty"`
+	Gateway        string           `json:"gateway,omitempty"`
+	Status         string           `json:"status,omitempty"`
+	Message        string           `json:"message,omitempty"`
+	CreatedAt      *time.Time       `json:"created_at,omitempty"`
+	Test           bool             `json:"test,omitempty"`
+	Authorization  string           `json:"authorization,omitempty"`
+	Currency       string           `json:"currency,omitempty"`
+	LocationID     *int64           `json:"location_id,omitempty"`
+	UserID         *int64           `json:"user_id,omitempty"`
+	ParentID       *int64           `json:"parent_id,omitempty"`
+	DeviceID       *int64           `json:"device_id,omitempty"`
+	ErrorCode      string           `json:"error_code,omitempty"`
+	SourceName     string           `json:"source_name,omitempty"`
+	PaymentDetails *PaymentDetails  `json:"payment_details,omitempty"`
 }
 
 type ClientDetails struct {
-	AcceptLanguage string `json:"accept_language"`
-	BrowserHeight  int    `json:"browser_height"`
-	BrowserIp      string `json:"browser_ip"`
-	BrowserWidth   int    `json:"browser_width"`
-	SessionHash    string `json:"session_hash"`
-	UserAgent      string `json:"user_agent"`
+	AcceptLanguage string `json:"accept_language,omitempty"`
+	BrowserHeight  int    `json:"browser_height,omitempty"`
+	BrowserIp      string `json:"browser_ip,omitempty"`
+	BrowserWidth   int    `json:"browser_width,omitempty"`
+	SessionHash    string `json:"session_hash,omitempty"`
+	UserAgent      string `json:"user_agent,omitempty"`
 }
 
 type Refund struct {
-	Id              int              `json:"id"`
-	OrderId         int              `json:"order_id"`
-	CreatedAt       *time.Time       `json:"created_at"`
-	Note            string           `json:"note"`
-	Restock         bool             `json:"restock"`
-	UserId          int              `json:"user_id"`
-	RefundLineItems []RefundLineItem `json:"refund_line_items"`
-	Transactions    []Transaction    `json:"transactions"`
+	Id              int64            `json:"id,omitempty"`
+	OrderId         int64            `json:"order_id,omitempty"`
+	CreatedAt       *time.Time       `json:"created_at,omitempty"`
+	Note            string           `json:"note,omitempty"`
+	Restock         bool             `json:"restock,omitempty"`
+	UserId          int64            `json:"user_id,omitempty"`
+	RefundLineItems []RefundLineItem `json:"refund_line_items,omitempty"`
+	Transactions    []Transaction    `json:"transactions,omitempty"`
 }
 
 type RefundLineItem struct {
-	Id         int       `json:"id"`
-	Quantity   int       `json:"quantity"`
-	LineItemId int       `json:"line_item_id"`
-	LineItem   *LineItem `json:"line_item"`
+	Id         int64            `json:"id,omitempty"`
+	Quantity   int              `json:"quantity,omitempty"`
+	LineItemId int64            `json:"line_item_id,omitempty"`
+	LineItem   *LineItem        `json:"line_item,omitempty"`
+	Subtotal   *decimal.Decimal `json:"subtotal,omitempty"`
+	TotalTax   *decimal.Decimal `json:"total_tax,omitempty"`
 }
 
 // List orders
 func (s *OrderServiceOp) List(options interface{}) ([]Order, error) {
-	path := fmt.Sprintf("%s.json", ordersBasePath)
+	path := fmt.Sprintf("%s/%s.json", globalApiPathPrefix, ordersBasePath)
 	resource := new(OrdersResource)
 	err := s.client.Get(path, resource, options)
 	return resource.Orders, err
@@ -288,14 +295,116 @@ func (s *OrderServiceOp) List(options interface{}) ([]Order, error) {
 
 // Count orders
 func (s *OrderServiceOp) Count(options interface{}) (int, error) {
-	path := fmt.Sprintf("%s/count.json", ordersBasePath)
+	path := fmt.Sprintf("%s/%s/count.json", globalApiPathPrefix, ordersBasePath)
 	return s.client.Count(path, options)
 }
 
 // Get individual order
-func (s *OrderServiceOp) Get(orderID int, options interface{}) (*Order, error) {
-	path := fmt.Sprintf("%s/%d.json", ordersBasePath, orderID)
+func (s *OrderServiceOp) Get(orderID int64, options interface{}) (*Order, error) {
+	path := fmt.Sprintf("%s/%s/%d.json", globalApiPathPrefix, ordersBasePath, orderID)
 	resource := new(OrderResource)
 	err := s.client.Get(path, resource, options)
 	return resource.Order, err
+}
+
+// Create order
+func (s *OrderServiceOp) Create(order Order) (*Order, error) {
+	path := fmt.Sprintf("%s/%s.json", globalApiPathPrefix, ordersBasePath)
+	wrappedData := OrderResource{Order: &order}
+	resource := new(OrderResource)
+	err := s.client.Post(path, wrappedData, resource)
+	return resource.Order, err
+}
+
+// Update order
+func (s *OrderServiceOp) Update(order Order) (*Order, error) {
+	path := fmt.Sprintf("%s/%s/%d.json", globalApiPathPrefix, ordersBasePath, order.ID)
+	wrappedData := OrderResource{Order: &order}
+	resource := new(OrderResource)
+	err := s.client.Put(path, wrappedData, resource)
+	return resource.Order, err
+}
+
+// List metafields for an order
+func (s *OrderServiceOp) ListMetafields(orderID int64, options interface{}) ([]Metafield, error) {
+	metafieldService := &MetafieldServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return metafieldService.List(options)
+}
+
+// Count metafields for an order
+func (s *OrderServiceOp) CountMetafields(orderID int64, options interface{}) (int, error) {
+	metafieldService := &MetafieldServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return metafieldService.Count(options)
+}
+
+// Get individual metafield for an order
+func (s *OrderServiceOp) GetMetafield(orderID int64, metafieldID int64, options interface{}) (*Metafield, error) {
+	metafieldService := &MetafieldServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return metafieldService.Get(metafieldID, options)
+}
+
+// Create a new metafield for an order
+func (s *OrderServiceOp) CreateMetafield(orderID int64, metafield Metafield) (*Metafield, error) {
+	metafieldService := &MetafieldServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return metafieldService.Create(metafield)
+}
+
+// Update an existing metafield for an order
+func (s *OrderServiceOp) UpdateMetafield(orderID int64, metafield Metafield) (*Metafield, error) {
+	metafieldService := &MetafieldServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return metafieldService.Update(metafield)
+}
+
+// Delete an existing metafield for an order
+func (s *OrderServiceOp) DeleteMetafield(orderID int64, metafieldID int64) error {
+	metafieldService := &MetafieldServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return metafieldService.Delete(metafieldID)
+}
+
+// List fulfillments for an order
+func (s *OrderServiceOp) ListFulfillments(orderID int64, options interface{}) ([]Fulfillment, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.List(options)
+}
+
+// Count fulfillments for an order
+func (s *OrderServiceOp) CountFulfillments(orderID int64, options interface{}) (int, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.Count(options)
+}
+
+// Get individual fulfillment for an order
+func (s *OrderServiceOp) GetFulfillment(orderID int64, fulfillmentID int64, options interface{}) (*Fulfillment, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.Get(fulfillmentID, options)
+}
+
+// Create a new fulfillment for an order
+func (s *OrderServiceOp) CreateFulfillment(orderID int64, fulfillment Fulfillment) (*Fulfillment, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.Create(fulfillment)
+}
+
+// Update an existing fulfillment for an order
+func (s *OrderServiceOp) UpdateFulfillment(orderID int64, fulfillment Fulfillment) (*Fulfillment, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.Update(fulfillment)
+}
+
+// Complete an existing fulfillment for an order
+func (s *OrderServiceOp) CompleteFulfillment(orderID int64, fulfillmentID int64) (*Fulfillment, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.Complete(fulfillmentID)
+}
+
+// Transition an existing fulfillment for an order
+func (s *OrderServiceOp) TransitionFulfillment(orderID int64, fulfillmentID int64) (*Fulfillment, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.Transition(fulfillmentID)
+}
+
+// Cancel an existing fulfillment for an order
+func (s *OrderServiceOp) CancelFulfillment(orderID int64, fulfillmentID int64) (*Fulfillment, error) {
+	fulfillmentService := &FulfillmentServiceOp{client: s.client, resource: ordersResourceName, resourceID: orderID}
+	return fulfillmentService.Cancel(fulfillmentID)
 }

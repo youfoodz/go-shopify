@@ -16,6 +16,10 @@ import (
 	"gopkg.in/jarcoal/httpmock.v1"
 )
 
+const (
+	testApiVersion = "9999-99"
+)
+
 var (
 	client *Client
 	app    App
@@ -40,7 +44,7 @@ func setup() {
 		Scope:       "read_products",
 		Password:    "privateapppassword",
 	}
-	client = NewClient(app, "fooshop", "abcd")
+	client = NewClient(app, "fooshop", "abcd", WithVersion(testApiVersion))
 	httpmock.ActivateNonDefault(client.Client)
 }
 
@@ -56,8 +60,40 @@ func loadFixture(filename string) []byte {
 	return f
 }
 
+func TestWithVersion(t *testing.T) {
+	_ = NewClient(app, "fooshop", "abcd", WithVersion(testApiVersion))
+	expected := fmt.Sprintf("admin/api/%s", testApiVersion)
+	if globalApiPathPrefix != expected {
+		t.Errorf("WithVersion globalApiPathPrefix = %s, expected %s", globalApiPathPrefix, expected)
+	}
+}
+
+func TestWithVersionNoVersion(t *testing.T) {
+	_ = NewClient(app, "fooshop", "abcd", WithVersion(""))
+	expected := "admin"
+	if globalApiPathPrefix != expected {
+		t.Errorf("WithVersion globalApiPathPrefix = %s, expected %s", globalApiPathPrefix, expected)
+	}
+}
+
+func TestWithoutVersionInInitiation(t *testing.T) {
+	_ = NewClient(app, "fooshop", "abcd")
+	expected := "admin"
+	if globalApiPathPrefix != expected {
+		t.Errorf("WithVersion globalApiPathPrefix = %s, expected %s", globalApiPathPrefix, expected)
+	}
+}
+
+func TestWithVersionInvalidVersion(t *testing.T) {
+	_ = NewClient(app, "fooshop", "abcd", WithVersion("9999-99b"))
+	expected := "admin"
+	if globalApiPathPrefix != expected {
+		t.Errorf("WithVersion globalApiPathPrefix = %s, expected %s", globalApiPathPrefix, expected)
+	}
+}
+
 func TestNewClient(t *testing.T) {
-	testClient := NewClient(app, "fooshop", "abcd")
+	testClient := NewClient(app, "fooshop", "abcd", WithVersion(testApiVersion))
 	expected := "https://fooshop.myshopify.com"
 	if testClient.baseURL.String() != expected {
 		t.Errorf("NewClient BaseURL = %v, expected %v", testClient.baseURL.String(), expected)
@@ -65,7 +101,23 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestNewClientWithNoToken(t *testing.T) {
-	testClient := NewClient(app, "fooshop", "")
+	testClient := NewClient(app, "fooshop", "", WithVersion(testApiVersion))
+	expected := "https://fooshop.myshopify.com"
+	if testClient.baseURL.String() != expected {
+		t.Errorf("NewClient BaseURL = %v, expected %v", testClient.baseURL.String(), expected)
+	}
+}
+
+func TestAppNewClient(t *testing.T) {
+	testClient := app.NewClient("fooshop", "abcd", WithVersion(testApiVersion))
+	expected := "https://fooshop.myshopify.com"
+	if testClient.baseURL.String() != expected {
+		t.Errorf("NewClient BaseURL = %v, expected %v", testClient.baseURL.String(), expected)
+	}
+}
+
+func TestAppNewClientWithNoToken(t *testing.T) {
+	testClient := app.NewClient("fooshop", "", WithVersion(testApiVersion))
 	expected := "https://fooshop.myshopify.com"
 	if testClient.baseURL.String() != expected {
 		t.Errorf("NewClient BaseURL = %v, expected %v", testClient.baseURL.String(), expected)
@@ -73,7 +125,7 @@ func TestNewClientWithNoToken(t *testing.T) {
 }
 
 func TestNewRequest(t *testing.T) {
-	testClient := NewClient(app, "fooshop", "abcd")
+	testClient := NewClient(app, "fooshop", "abcd", WithVersion(testApiVersion))
 
 	inURL, outURL := "foo?page=1", "https://fooshop.myshopify.com/foo?limit=10&page=1"
 	inBody := struct {
@@ -116,7 +168,7 @@ func TestNewRequest(t *testing.T) {
 }
 
 func TestNewRequestForPrivateApp(t *testing.T) {
-	testClient := NewClient(app, "fooshop", "")
+	testClient := NewClient(app, "fooshop", "", WithVersion(testApiVersion))
 
 	inURL, outURL := "foo?page=1", "https://fooshop.myshopify.com/foo?limit=10&page=1"
 	inBody := struct {
@@ -173,7 +225,7 @@ func TestNewRequestForPrivateApp(t *testing.T) {
 }
 
 func TestNewRequestMissingToken(t *testing.T) {
-	testClient := NewClient(app, "fooshop", "")
+	testClient := NewClient(app, "fooshop", "", WithVersion(testApiVersion))
 
 	req, _ := testClient.NewRequest("GET", "/foo", nil, nil)
 
@@ -185,7 +237,7 @@ func TestNewRequestMissingToken(t *testing.T) {
 }
 
 func TestNewRequestError(t *testing.T) {
-	testClient := NewClient(app, "fooshop", "abcd")
+	testClient := NewClient(app, "fooshop", "abcd", WithVersion(testApiVersion))
 
 	cases := []struct {
 		method  string
@@ -234,7 +286,7 @@ func TestDo(t *testing.T) {
 		{
 			"foo/3",
 			httpmock.NewStringResponder(400, `{"errors": {"title": ["wrong"]}}`),
-			ResponseError{Status: 400, Message: "wrong", Errors: []string{"title: wrong"}},
+			ResponseError{Status: 400, Message: "title: wrong", Errors: []string{"title: wrong"}},
 		},
 		{
 			"foo/4",
@@ -495,7 +547,7 @@ func TestCheckResponseError(t *testing.T) {
 		},
 		{
 			httpmock.NewStringResponse(400, `{"errors": { "order": ["order is wrong"] }}`),
-			ResponseError{Status: 400, Message: "order is wrong", Errors: []string{"order: order is wrong"}},
+			ResponseError{Status: 400, Message: "order: order is wrong", Errors: []string{"order: order is wrong"}},
 		},
 		{
 			httpmock.NewStringResponse(400, `{error:bad request}`),
@@ -522,7 +574,11 @@ func TestCount(t *testing.T) {
 	httpmock.RegisterResponder("GET", "https://fooshop.myshopify.com/foocount",
 		httpmock.NewStringResponder(200, `{"count": 5}`))
 
-	httpmock.RegisterResponder("GET", "https://fooshop.myshopify.com/foocount?created_at_min=2016-01-01T00%3A00%3A00Z",
+	params := map[string]string{"created_at_min": "2016-01-01T00:00:00Z"}
+	httpmock.RegisterResponderWithQuery(
+		"GET",
+		"https://fooshop.myshopify.com/foocount",
+		params,
 		httpmock.NewStringResponder(200, `{"count": 2}`))
 
 	// Test without options
